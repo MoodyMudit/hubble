@@ -12,7 +12,7 @@ __salt__ = {'cmd.run': salt.modules.cmdmod._run_quiet,
 
 log = logging.getLogger(__name__)
 
-def query(query_sql='', osquery_path='/opt/osquery/osqueryi', args=None, max_file_size=104857600, timeout=10000, output_loglevel='quiet'):
+def _query(query_sql='', osquery_path='/opt/osquery/osqueryi', args=None, max_file_size=104857600, timeout=10000, output_loglevel='quiet'):
   try:
     if not query_sql:
       log.error('no osquery sql found: %s', query_sql)

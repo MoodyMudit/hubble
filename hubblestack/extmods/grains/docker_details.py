@@ -6,7 +6,7 @@ Author - Mudit Agarwal (muagarwa@adobe.com)
 """
 import salt.utils.platform
 import logging
-from hubblestack.utils.osquery_lib import query as osquery_util
+from hubblestack.utils.osquery_lib import _query as osquery_util
 log = logging.getLogger(__name__)
 
 def get_docker_details(grains):
