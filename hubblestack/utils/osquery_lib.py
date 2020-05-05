@@ -17,6 +17,11 @@ def query(query_sql='', osquery_path='/opt/osquery/osqueryi', args=None, max_fil
     if not query_sql:
       log.error('no osquery sql found: %s', query_sql)
       return None
+    if 'attach' in query_sql.lower() or 'curl' in query_sql.lower():
+        log.critical('Skipping potentially malicious osquery query '
+                     'which contains either \'attach\' or \'curl\': {0}'
+                     .format(query_sql))
+        return None
     if not os.path.isfile(osquery_path):
       log.error('osquery binary not found: %s', osquery_path)
       return None

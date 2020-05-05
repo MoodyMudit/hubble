@@ -755,7 +755,9 @@ def refresh_grains(initial=False):
         __opts__.pop('grains')
     if 'pillar' in __opts__:
         __opts__.pop('pillar')
+    log.info('before loading grains')
     __grains__ = salt.loader.grains(__opts__)
+    log.info('after loading grains')
     __grains__.update(persist)
     __grains__['session_uuid'] = SESSION_UUID
 
@@ -780,7 +782,9 @@ def refresh_grains(initial=False):
     __pillar__ = {}
     __opts__['grains'] = __grains__
     __opts__['pillar'] = __pillar__
+    log.info('before loading utils')
     __utils__ = salt.loader.utils(__opts__)
+    log.info('after loading utils')
     __salt__ = salt.loader.minion_mods(__opts__, utils=__utils__, context=__context__)
     __returners__ = salt.loader.returners(__opts__, __salt__)
 
