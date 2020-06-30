@@ -79,7 +79,7 @@ structure::
 """
 
 # Import python libs
-from __future__ import absolute_import, print_function, unicode_literals
+
 import datetime
 import os
 import time
@@ -101,9 +101,11 @@ from salt.ext.six.moves import filter
 from salt.ext.six.moves.urllib.parse import quote as _quote
 # pylint: enable=import-error,no-name-in-module,redefined-builtin
 
+from hubblestack.utils.signing import find_wrapf
+
 log = logging.getLogger(__name__)
 
-S3_CACHE_EXPIRE = 30  # cache for 30 seconds
+S3_CACHE_EXPIRE = 1800  # cache for 30 minutes
 S3_SYNC_ON_UPDATE = True  # sync cache on update rather than jit
 
 
@@ -123,7 +125,7 @@ def update():
     """
     metadata = _init()
 
-    if S3_SYNC_ON_UPDATE:
+    if S3_SYNC_ON_UPDATE and metadata:
         # sync the buckets to the local cache
         log.info('Syncing local cache from S3...')
         for saltenv, env_meta in six.iteritems(metadata):
@@ -139,6 +141,7 @@ def update():
         log.info('Sync local cache from S3 completed.')
 
 
+@find_wrapf(not_found={'bucket': None, 'path': None}, real_path='cpath')
 def find_file(path, saltenv='base', **kwargs):
     """
     Look through the buckets cache file for a match.
@@ -175,13 +178,13 @@ def find_file(path, saltenv='base', **kwargs):
     if not fnd['path'] or not fnd['bucket']:
         return fnd
 
-    cached_file_path = _get_cached_file_name(fnd['bucket'], saltenv, path)
+    fnd['cpath'] = _get_cached_file_name(fnd['bucket'], saltenv, path)
 
     try:
         # jit load the file from S3 if it's not in the cache or it's old
-        _get_file_from_s3(metadata, saltenv, fnd['bucket'], path, cached_file_path)
+        _get_file_from_s3(metadata, saltenv, fnd['bucket'], path, fnd['cpath'])
     except Exception as exc:
-        if not os.path.isfile(cached_file_path):
+        if not os.path.isfile(fnd['cpath']):
             raise exc
 
     return fnd
@@ -280,7 +283,7 @@ def file_list(load):
     return ret
 
 
-def file_list_emptydirs(load):
+def file_list_emptydirs(load): # pylint: disable=unused-argument ; just a todo
     """
     Return a list of all empty directories on the master
     """
@@ -324,6 +327,7 @@ def _get_s3_key():
     """
     Get AWS keys from pillar or config
     """
+
     defaults = {
         'https_enable': True,
         'verify_ssl': True,
@@ -332,7 +336,9 @@ def _get_s3_key():
         'service_url': None,
         'keyid': None,
         'key': None,
+        'cache_expire': S3_CACHE_EXPIRE,
     }
+
     ret = dict()
     for k in defaults:
         s3k = 's3.' + k
@@ -346,14 +352,17 @@ def _get_s3_key():
 
     return ret
 
+
 def _init():
     """
     Connect to S3 and download the metadata for each file in all buckets
     specified and cache the data to disk.
     """
     cache_file = _get_buckets_cache_filename()
-    exp = time.time() - S3_CACHE_EXPIRE
+    cache_expire_time = float(_get_s3_key().get('cache_expire'))
+    exp = time.time() - cache_expire_time
 
+    log.debug('S3 cache expire time is %ds', cache_expire_time)
     # check mtime of the buckets files cache
     metadata = None
     try:
@@ -438,6 +447,9 @@ def _refresh_buckets_cache_file(cache_file):
                                         path_style=s3_key_kwargs['path_style'],
                                         https_enable=s3_key_kwargs['https_enable'],
                                         params={'marker': marker})
+            if not tmp:
+                return None
+
             headers = []
             for header in tmp:
                 if 'Key' in header:
@@ -548,7 +560,7 @@ def _refresh_buckets_cache_file(cache_file):
 
     log.debug('Writing buckets cache file')
 
-    with salt.utils.files.fopen(cache_file, 'w') as fp_:
+    with salt.utils.files.fopen(cache_file, 'wb') as fp_:
         pickle.dump(metadata, fp_)
 
     return metadata
@@ -563,8 +575,14 @@ def _read_buckets_cache_file(cache_file):
     with salt.utils.files.fopen(cache_file, 'rb') as fp_:
         try:
             data = pickle.load(fp_)
+            # check for 'corrupted' cache data ex: {u'base':[]}
+            if not any(data.values()):
+                data = None
+
         except (pickle.UnpicklingError, AttributeError, EOFError, ImportError,
-                IndexError, KeyError):
+                IndexError, KeyError) as eobj:
+            log.info('error unpickling buckets cache file (%s): %s',
+                cache_file, repr(eobj))
             data = None
 
     return data
