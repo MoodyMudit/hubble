@@ -127,9 +127,10 @@ log = logging.getLogger(__name__)
 __fdg__ = None
 __returners__ = None
 RETURNER_ID_BLOCK = None
+default_consolidation_operator = "and"
 
 
-def fdg(fdg_file, starting_chained=None):
+def fdg(fdg_file, nova_execution=False, starting_chained=None):
     """
     Given an fdg file (usually a salt:// file, but can also be the absolute
     path to a file on the system), execute that fdg file, starting with the
@@ -177,7 +178,8 @@ def fdg(fdg_file, starting_chained=None):
     global RETURNER_ID_BLOCK
     RETURNER_ID_BLOCK = (fdg_file, str(starting_chained))
     # Recursive execution of the blocks
-    ret = _fdg_execute('main', block_data, chained=starting_chained)
+    log.debug("value of nova_execution is %s", nova_execution)
+    ret = _fdg_execute('main', block_data, nova_execution, chained=starting_chained)
     return RETURNER_ID_BLOCK, ret
 
 
@@ -232,7 +234,7 @@ def _fdg_saltify(path):
     return 'salt://fdg/{0}.fdg'.format(path)
 
 
-def _fdg_execute(block_id, block_data, chained=None, chained_status=None):
+def _fdg_execute(block_id, block_data, nova_execution, chained=None, chained_status=None):
     """
     Recursive function which executes a block and any blocks chained by that
     block (by calling itself).
@@ -241,6 +243,10 @@ def _fdg_execute(block_id, block_data, chained=None, chained_status=None):
     block = block_data.get(block_id)
 
     _check_block(block, block_id)
+    consolidation_operator = block.get("consolidation_operator")
+    log.debug("block's consolidation operator is now %s", consolidation_operator)
+    if not consolidation_operator:
+        consolidation_operator = default_consolidation_operator
 
     # Status is used for the conditional chaining keywords
     status, ret = __fdg__[block['module']](*block.get('args', []), chained=chained,
@@ -255,22 +261,22 @@ def _fdg_execute(block_id, block_data, chained=None, chained_status=None):
 
     if 'xpipe_on_true' in block and status:
         log.debug('Piping via chaining keyword xpipe_on_true.')
-        return _xpipe(ret, status, block_data, block['xpipe_on_true'], returner)
+        return _xpipe(ret, status, block_data, block['xpipe_on_true'], nova_execution, consolidation_operator, returner)
     elif 'xpipe_on_false' in block and not status:
         log.debug('Piping via chaining keyword xpipe_on_false.')
-        return _xpipe(ret, status, block_data, block['xpipe_on_false'], returner)
+        return _xpipe(ret, status, block_data, block['xpipe_on_false'], nova_execution, consolidation_operator, returner)
     elif 'pipe_on_true' in block and status:
         log.debug('Piping via chaining keyword pipe_on_true.')
-        return _pipe(ret, status, block_data, block['pipe_on_true'], returner)
+        return _pipe(ret, status, block_data, block['pipe_on_true'], nova_execution, returner)
     elif 'pipe_on_false' in block and not status:
         log.debug('Piping via chaining keyword pipe_on_false.')
-        return _pipe(ret, status, block_data, block['pipe_on_false'], returner)
+        return _pipe(ret, status, block_data, block['pipe_on_false'], nova_execution, returner)
     elif 'xpipe' in block:
         log.debug('Piping via chaining keyword xpipe.')
-        return _xpipe(ret, status, block_data, block['xpipe'], returner)
+        return _xpipe(ret, status, block_data, block['xpipe'], nova_execution, consolidation_operator, returner)
     elif 'pipe' in block:
         log.debug('Piping via chaining keyword pipe.')
-        return _pipe(ret, status, block_data, block['pipe'], returner)
+        return _pipe(ret, status, block_data, block['pipe'], nova_execution, returner)
     else:
         log.debug('No valid chaining keyword matched. Returning.')
         if returner:
@@ -278,7 +284,7 @@ def _fdg_execute(block_id, block_data, chained=None, chained_status=None):
         return ret, status
 
 
-def _xpipe(chained, chained_status, block_data, block_id, returner=None):
+def _xpipe(chained, chained_status, block_data, block_id, nova_execution, consolidation_operator, returner=None):
     """
     Iterate over the given value and for each iteration, call the given fdg
     block by id with the iteration value as the passthrough.
@@ -287,18 +293,22 @@ def _xpipe(chained, chained_status, block_data, block_id, returner=None):
     """
     ret = []
     for value in chained:
-        ret.append(_fdg_execute(block_id, block_data, value, chained_status))
+        ret.append(_fdg_execute(block_id, block_data, nova_execution, value, chained_status))
     if returner:
         _return(ret, returner)
+    if nova_execution:
+        consolidated_status = _get_consolidated_status(ret, consolidation_operator)
+        log.debug("final consolidated_status is %s", consolidated_status)
+        return ret, {"consolidated_status": consolidated_status}
     return ret
 
 
-def _pipe(chained, chained_status, block_data, block_id, returner=None):
+def _pipe(chained, chained_status, block_data, block_id, nova_execution, returner=None):
     """
     Call the given fdg block by id with the given value as the passthrough and
     return the result
     """
-    ret = _fdg_execute(block_id, block_data, chained, chained_status)
+    ret = _fdg_execute(block_id, block_data, nova_execution, chained, chained_status)
     if returner:
         _return(ret, returner)
     return ret
@@ -349,6 +359,7 @@ def _check_block(block, block_id):
         'pipe_on_false',
         'args',
         'kwargs',
+        'consolidation_operator',
     }
     for key in block:
         if key not in acceptable_block_args:
@@ -386,3 +397,25 @@ def _get_top_data(topfile):
             ret.extend(data)
 
     return ret
+
+
+def _get_consolidated_status(ret, consolidation_operator):
+    log.debug("consolidating status for: %s", ret)
+    log.debug("consolidation_operator is %s", consolidation_operator)
+    for data in ret:
+        result, status = data
+        log.debug("result of 1 item is %s", result)
+        log.debug("status of 1 item is %s", status)
+        if "and" in consolidation_operator:
+            if not status:
+                 return False
+        elif "or" in consolidation_operator:
+            if status:
+                 return True
+        else:
+            log.error("operator not supported, returning False")
+            return False
+    if "and" in consolidation_operator:
+        return True
+    else:
+        return False
