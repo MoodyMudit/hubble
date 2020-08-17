@@ -234,7 +234,7 @@ def _fdg_saltify(path):
     return 'salt://fdg/{0}.fdg'.format(path)
 
 
-def _fdg_execute(block_id, block_data, nova_execution, chained=None, chained_status=None):
+def _fdg_execute(block_id, block_data, nova_execution=False, chained=None, chained_status=None):
     """
     Recursive function which executes a block and any blocks chained by that
     block (by calling itself).
@@ -267,16 +267,16 @@ def _fdg_execute(block_id, block_data, nova_execution, chained=None, chained_sta
         return _xpipe(ret, status, block_data, block['xpipe_on_false'], nova_execution, consolidation_operator, returner)
     elif 'pipe_on_true' in block and status:
         log.debug('Piping via chaining keyword pipe_on_true.')
-        return _pipe(ret, status, block_data, block['pipe_on_true'], nova_execution, returner)
+        return _pipe(ret, status, block_data, block['pipe_on_true'], returner)
     elif 'pipe_on_false' in block and not status:
         log.debug('Piping via chaining keyword pipe_on_false.')
-        return _pipe(ret, status, block_data, block['pipe_on_false'], nova_execution, returner)
+        return _pipe(ret, status, block_data, block['pipe_on_false'], returner)
     elif 'xpipe' in block:
         log.debug('Piping via chaining keyword xpipe.')
         return _xpipe(ret, status, block_data, block['xpipe'], nova_execution, consolidation_operator, returner)
     elif 'pipe' in block:
         log.debug('Piping via chaining keyword pipe.')
-        return _pipe(ret, status, block_data, block['pipe'], nova_execution, returner)
+        return _pipe(ret, status, block_data, block['pipe'], returner)
     else:
         log.debug('No valid chaining keyword matched. Returning.')
         if returner:
@@ -299,16 +299,16 @@ def _xpipe(chained, chained_status, block_data, block_id, nova_execution, consol
     if nova_execution:
         consolidated_status = _get_consolidated_status(ret, consolidation_operator)
         log.debug("final consolidated_status is %s", consolidated_status)
-        return ret, {"consolidated_status": consolidated_status}
+        return ret, consolidated_status
     return ret
 
 
-def _pipe(chained, chained_status, block_data, block_id, nova_execution, returner=None):
+def _pipe(chained, chained_status, block_data, block_id, returner=None):
     """
     Call the given fdg block by id with the given value as the passthrough and
     return the result
     """
-    ret = _fdg_execute(block_id, block_data, nova_execution, chained, chained_status)
+    ret = _fdg_execute(block_id, block_data, chained, chained_status)
     if returner:
         _return(ret, returner)
     return ret
@@ -402,10 +402,14 @@ def _get_top_data(topfile):
 def _get_consolidated_status(ret, consolidation_operator):
     log.debug("consolidating status for: %s", ret)
     log.debug("consolidation_operator is %s", consolidation_operator)
+    if not isinstance(ret, list):
+        log.error("data not formatted properly, consolidation failed for %s", ret)
+        return False
     for data in ret:
+        if not isinstance(data, tuple):
+            log.error("data not formatted properly, consolidation failed for %s", ret)
+            return False
         result, status = data
-        log.debug("result of 1 item is %s", result)
-        log.debug("status of 1 item is %s", status)
         if "and" in consolidation_operator:
             if not status:
                  return False
