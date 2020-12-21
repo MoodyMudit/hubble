@@ -119,11 +119,8 @@ import logging
 import os
 
 import yaml
-from hubblestack.exceptions import CommandExecutionError
 
 import hubblestack.module_runner.runner_factory as runner_factory
-import hubblestack.loader
-import hubblestack.utils
 from hubblestack.exceptions import CommandExecutionError
 
 log = logging.getLogger(__name__)
@@ -198,6 +195,9 @@ def top(fdg_topfile='top.fdg'):
     fdg_routines = _get_top_data(fdg_topfile)
 
     ret = {}
+    if not fdg_routines:
+        log.exception("No fdg_routines found for one or more filters in topfile %s", fdg_topfile)
+        return ret
     for fdg_file in fdg_routines:
         if isinstance(fdg_file, dict):
             for key, val in fdg_file.items():
@@ -233,10 +233,12 @@ def _get_top_data(topfile):
                                     'dict: {0}'.format(topdata))
 
     topdata = topdata['fdg']
-
     ret = []
 
     for match, data in topdata.items():
+        if data is None:
+            log.exception('No profiles found for one or more filters in topfile %s', topfile)
+            return None
         if __mods__['match.compound'](match):
             ret.extend(data)
 

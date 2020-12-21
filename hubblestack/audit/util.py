@@ -185,7 +185,7 @@ Functions supported:
     and replace them with None.
 
     Arguments supported:
-        starting_dict:  (Optional)
+        starting_seq:  (Optional)
                         Initial dictionary
         extend_chained: (Default True)
                         By default, ``chained`` will have ``.extend()`` or  ``.update()``  called on it with
@@ -299,7 +299,9 @@ def validate_params(block_id, block_dict, extra_args=None):
     function_param = runner_utils.get_param_for_module(block_id, block_dict, 'function')
     if not function_param:
         error['function'] = 'Mandatory parameter: function not found for id: %s' % (block_id)
-    elif function_param not in ['filter_dict']:
+    elif function_param not in ['filter_dict', 'filter_seq', 'get_index', 'get_key', 'join',
+                                'dict_to_list', 'dict_convert_none', 'print_string',
+                                'dict_remove_none', 'nop', 'encode_base64']:
         error['function'] = 'Unsupported function in util: {0}'.format(function_param)
     else:
         if function_param == 'filter_dict':
@@ -904,7 +906,7 @@ def _dict_convert_none(block_id, block_dict, extra_args):
         Block id
 
     block_dict:
-        starting_dict:  (Optional)
+        starting_seq:  (Optional)
                         Initial dictionary
         extend_chained: (Default True)
                         By default, ``chained`` will have ``.extend()`` or  ``.update()``  called on it with
@@ -1134,15 +1136,18 @@ def _sterilize_seq(seq):
 
     return updated_seq
 
+
 def _nop(block_id, block_dict, extra_args):
     """
     This function just returns the chained value. It is a nop/no operation.
 
     This can be useful if you want to do a pipe_on_true to filter out
-    False values -- you can pipe_on_true to process.nop, and stick a
+    False values -- you can pipe_on_true to util's nop, and stick a
     returner on the nop operation to just return the True values.
     """
-    return runner_utils.get_chained_param(extra_args)
+    chained_params = runner_utils.get_chained_param(extra_args)
+    return runner_utils.prepare_positive_result_for_module(block_id, chained_params)
+
 
 def _encode_base64(block_id, block_dict, extra_args):
     """

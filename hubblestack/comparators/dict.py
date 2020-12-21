@@ -129,6 +129,46 @@ import hubblestack.module_runner.comparator
 log = logging.getLogger(__name__)
 
 
+def _compare_dictionary_values(audit_id, result_to_compare, args, errors):
+    for key, value in result_to_compare.items():
+        if isinstance(value, dict):
+            _compare_dictionary_values(audit_id, value, args, errors)
+        else:
+            if 'type' in args:
+                ret_status, ret_val = hubblestack.extmods.module_runner.comparator.run(audit_id, args, int(value))
+                if not ret_status:
+                    errors.append(ret_val)
+
+
+def compare_all_values(audit_id, result_to_compare, args):
+    """
+    For a given dictionary, this function will only consider the values.
+    All values must match.
+    Example :
+    {
+    'HKEY_USERS\\<SID>\\Software\\Policies\\Microsoft\\Windows\\Control Panel\\Desktop\\ScreenSaveTimeOut':
+        {
+        'S-1-5-21-1645406227-2048958880-3100449314-500': '900',
+        'S-1-5-21-1645406227-2048958880-3100449314-1008': 900
+        }
+    }
+    for the above dictionary, you can use this function to compare the leaf values to be 900.
+    :param audit_id
+        audit_id for the check
+    :param result_to_compare:
+        Dictionary values to compare
+    :param args:
+        Comparator dictionary as mentioned in the check.
+    """
+    errors = []
+    _compare_dictionary_values(audit_id, result_to_compare, args['compare_all_values'], errors)
+    if errors:
+        error_message = 'dict::match failed, errors={0}'.format(str(errors))
+        log.debug("for check %s errors occurred %s", audit_id, error_message)
+        return False, error_message
+    return True, "Dictionary comparison passed"
+
+
 def match(audit_id, result_to_compare, args):
     """
     Match dictionary elements dynamically. All elements must match
@@ -209,6 +249,9 @@ def match_any_if_key_matches(audit_id, result_to_compare, args):
     log.debug('Running dict::match_any_if_key_matches for audit_id: {0}'.format(audit_id))
 
     key_name = args['match_any_if_key_matches']['match_key']
+    if key_name not in result_to_compare:
+        log.debug("Required key '%s' is not found in '%s' for audit_id '%s'", key_name, result_to_compare, audit_id)
+        return True, "pass_as_key_not_found"
     key_found_once = False
     for to_match_dict in args['match_any_if_key_matches']['args']:
         errors = []
@@ -218,12 +261,20 @@ def match_any_if_key_matches(audit_id, result_to_compare, args):
 
             if not errors:
                 # found a match
+                log.debug("dictionary comparison successful."
+                          " '%s' matches '%s'", to_match_dict, result_to_compare)
                 return True, "Dictionary comparison passed"
+            else:
+                log.debug("dictionary comparison is not successful."
+                          " '%s' does not match '%s'", to_match_dict, result_to_compare)
+                return False, "Dictionary comparison failed in dict::match_any_if_key_matches, " \
+                              "errors={0}".format(str(errors))
 
-    if key_found_once:
-        error_message = 'dict::match_any_if_key_matches failed, errors={0}'.format(str(errors))
+    if not key_found_once:
+        error_message = "key '{0}' exists in dict '{1}', " \
+                        "but does not match intended values".format(key_name, result_to_compare)
+        log.debug(error_message)
         return False, error_message
-    return True, "pass_as_key_not_found"
 
 
 def match_key_any(audit_id, result_to_compare, args):
