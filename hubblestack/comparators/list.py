@@ -49,7 +49,7 @@ List comparator exposes various commands:
             - name: xyz
               running: true
 
-- "match_any_if_key_matches"
+- "match_any_if_keyvalue_matches"
     This is a special case when user want to match only when desired key is found.
     Example: If name=rsync found, then match other attributes.
   
@@ -61,7 +61,7 @@ List comparator exposes various commands:
 
     comparator:
         type: "list"
-        match_any_if_key_matches:
+        match_any_if_keyvalue_matches:
             match_key: name
             args:
                 - name: abc
@@ -160,7 +160,7 @@ def match(audit_id, result_to_compare, args):
         log.error("empty list received in list::match for audit_id: {0}".format(audit_id))
         return False, "list::match failure. {0} is not an instance of list".format(result_to_compare)
     if is_integer(result_to_compare[0]):
-        ret_status, ret_val = hubblestack.extmods.module_runner.comparator.run(
+        ret_status, ret_val = hubblestack.module_runner.comparator.run(
             audit_id,
             {"type": "number", "match": expected_list[0]},
             int(result_to_compare[0]))
@@ -194,7 +194,7 @@ def match_any(audit_id, result_to_compare, args):
 
     for r_compare in result_to_compare:
         if is_integer(r_compare):
-            ret_status, ret_val = hubblestack.extmods.module_runner.comparator.run(
+            ret_status, ret_val = hubblestack.module_runner.comparator.run(
                 audit_id,
                 {"type": "number", "match_any": args['match_any']},
                 int(r_compare))
@@ -274,7 +274,7 @@ def match_all(audit_id, result_to_compare, args):
     return True, "Check Passed"
 
 
-def match_any_if_key_matches(audit_id, result_to_compare, args):
+def match_any_if_keyvalue_matches(audit_id, result_to_compare, args):
     """
     We want to compare things if we found our interested key
     Even if the list does not have my interested name, it will pass
@@ -288,7 +288,7 @@ def match_any_if_key_matches(audit_id, result_to_compare, args):
 
     comparator:
         type: list
-        match_any_if_key_matches:
+        match_any_if_keyvalue_matches:
             match_key: name
             args:
                 - name: abc
@@ -310,14 +310,14 @@ def match_any_if_key_matches(audit_id, result_to_compare, args):
     :param args:
         Comparator dictionary as mentioned in the check.
     """
-    log.debug('Running list::match_any_if_key_matches for check: {0}'.format(audit_id))
+    log.debug('Running list::match_any_if_keyvalue_matches for check: {0}'.format(audit_id))
 
-    key_name = args['match_any_if_key_matches']['match_key']
+    key_name = args['match_any_if_keyvalue_matches']['match_key']
     failed_once = False
     for r_compare in result_to_compare:
         ret_status, ret_val = hubblestack.module_runner.comparator.run(
             audit_id,
-            {"type": "dict", "match_any_if_key_matches": args['match_any_if_key_matches']},
+            {"type": "dict", "match_any_if_keyvalue_matches": args['match_any_if_keyvalue_matches']},
             r_compare)
         if ret_status and ret_val != "pass_as_key_not_found":
             return True, "Check Passed"
@@ -325,7 +325,7 @@ def match_any_if_key_matches(audit_id, result_to_compare, args):
             failed_once = True
 
     if failed_once:
-        return False, "list::match_any_if_key_matches failure. Got={0}".format(result_to_compare)
+        return False, "list::match_any_if_keyvalue_matches failure. Got={0}".format(result_to_compare)
     return True, "Check Passed"
 
 
