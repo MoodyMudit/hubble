@@ -199,7 +199,7 @@ class HEC(object):
         self.server_uri = []
 
         if proxy and http_event_server_ssl:
-            self.proxy = 'https://{0}'.format(proxy)
+            self.proxy = 'http://{0}'.format(proxy)
         elif proxy:
             self.proxy = 'http://{0}'.format(proxy)
         else:
